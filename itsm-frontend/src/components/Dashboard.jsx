@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import API from '../services/api';
+import Chatbot from './Chatbot';
 
 export default function Dashboard({ role, onLogout }) {
   const [incidents, setIncidents] = useState([]);
@@ -122,6 +123,9 @@ export default function Dashboard({ role, onLogout }) {
           </tbody>
         </table>
       )}
+
+      {/* IT Support Chatbot */}
+      <Chatbot />
     </div>
   );
 }

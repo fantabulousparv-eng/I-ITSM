@@ -38,3 +38,10 @@ const incidentRoutes = require('./routes/incidentroutes');
 
 // Use incident routes
 app.use('/api/incidents', incidentRoutes);
+
+
+// Import chat routes
+const chatRoutes = require('./routes/chatRoutes');
+
+// Use chat routes
+app.use('/api/chat', chatRoutes);
