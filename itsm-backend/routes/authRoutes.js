@@ -1,62 +1,131 @@
 const express = require('express');
+const asyncHandler = require('../utils/asyncHandler');
+const validate = require('../utils/validate');
+const AppError = require('../utils/AppError');
+const repos = require('../repositories');
+const rateLimit = require('../middleware/rateLimit');
+const { signToken, requireAuth } = require('../middleware/auth');
+const { ROLES } = require('../constants/itsm');
+
 const router = express.Router();
-const User = require('../models/User');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
 
-// 1. REGISTER ROUTE (Creates Employee, Technician, or Admin)
-router.post('/register', async (req, res) => {
-  try {
-    const { name, email, password, role, skills } = req.body;
+/** Brute-force protection on the credential endpoints. */
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  keyPrefix: 'login',
+  message: 'Too many sign-in attempts. Please wait a few minutes and try again.',
+});
+const registerLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 30,
+  keyPrefix: 'register',
+  message: 'Too many sign-up attempts from this address. Please try again later.',
+});
 
-    // Check if user already exists
-    const existingUser = await User.findOne({ email });
-    if (existingUser) return res.status(400).json({ message: 'User already exists' });
+/** POST /api/auth/register - open signup for employees and technicians. */
+router.post(
+  '/register',
+  registerLimiter,
+  asyncHandler(async (req, res) => {
+    const name = validate.requiredString(req.body.name, 'Full name', { max: 120 });
+    const email = validate.email(req.body.email);
+    const password = validate.password(req.body.password);
+    const role = validate.role(req.body.role || ROLES.EMPLOYEE, 'Role');
 
-    // Hash the password securely
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
+    if (role === ROLES.ADMIN) {
+      throw AppError.forbidden(
+        'Administrator accounts are provisioned by the service desk and cannot be self-registered',
+        'ADMIN_SIGNUP_BLOCKED'
+      );
+    }
 
-    // Create new user
-    const newUser = new User({
+    const existing = await repos.users.findByEmail(email);
+    if (existing) {
+      throw AppError.conflict('An account with this email address already exists', 'EMAIL_IN_USE', { field: 'email' });
+    }
+
+    const user = await repos.users.create({
       name,
       email,
-      password: hashedPassword,
-      role: role || 'employee',
-      skills: skills || []
+      password,
+      role,
+      phone: validate.optionalString(req.body.phone, 'Phone', { max: 30 }),
+      department: validate.optionalString(req.body.department, 'Department', { max: 120 }),
+      skills: role === ROLES.TECHNICIAN ? validate.stringArray(req.body.skills, 'Skills', { max: 30 }) : [],
+      experienceYears: role === ROLES.TECHNICIAN
+        ? validate.positiveInt(req.body.experienceYears, 'Experience', { min: 0, max: 60, fallback: 0 })
+        : 0,
     });
 
-    await newUser.save();
-    res.status(201).json({ message: 'User registered successfully', userId: newUser._id });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+    const token = signToken(user);
+    res.status(201).json({
+      message: 'Your account has been created. Welcome aboard!',
+      token,
+      user,
+    });
+  })
+);
 
-// 2. LOGIN ROUTE (Returns a JWT token)
-router.post('/login', async (req, res) => {
-  try {
-    const { email, password } = req.body;
+/** POST /api/auth/login */
+router.post(
+  '/login',
+  loginLimiter,
+  asyncHandler(async (req, res) => {
+    const email = validate.email(req.body.email);
+    const password = validate.requiredString(req.body.password, 'Password', { max: 200 });
 
-    // Find user by email
-    const user = await User.findOne({ email });
-    if (!user) return res.status(400).json({ message: 'Invalid email or password' });
+    const user = await repos.users.findByEmail(email, { withPassword: true });
+    // Same message for unknown email and wrong password (no account enumeration).
+    if (!user) throw AppError.unauthorized('Invalid email or password', 'INVALID_CREDENTIALS');
+    if (user.active === false) {
+      throw AppError.forbidden('This account has been deactivated. Please contact the service desk.', 'ACCOUNT_DISABLED');
+    }
 
-    // Verify password
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(400).json({ message: 'Invalid email or password' });
+    const matches = await user.comparePassword(password);
+    if (!matches) throw AppError.unauthorized('Invalid email or password', 'INVALID_CREDENTIALS');
 
-    // Create JWT Token valid for 1 day
-    const token = jwt.sign(
-      { id: user._id, role: user.role }, 
-      process.env.JWT_SECRET || 'fallback_secret', 
-      { expiresIn: '1d' }
+    user.lastLoginAt = new Date();
+    await user.save();
+
+    res.json({
+      message: `Welcome back, ${user.name.split(' ')[0]}!`,
+      token: signToken(user),
+      user,
+    });
+  })
+);
+
+/** GET /api/auth/me - re-hydrate the session on page load. */
+router.get(
+  '/me',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    res.json({ user: req.user });
+  })
+);
+
+/** GET /api/auth/directory - lightweight people picker (auth required). */
+router.get(
+  '/directory',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const role = req.query.role ? validate.role(String(req.query.role), 'Role') : undefined;
+    const users = await repos.users.findAll(
+      role ? { role, active: true } : { active: true },
+      { sort: { name: 1 } }
     );
-
-    res.json({ token, role: user.role, name: user.name, userId: user._id });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+    res.json({
+      users: users.map((user) => ({
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        department: user.department,
+        skills: user.skills,
+      })),
+    });
+  })
+);
 
 module.exports = router;

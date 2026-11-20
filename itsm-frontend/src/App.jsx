@@ -1,25 +1,23 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
+import { clearSession, readSession } from './services/api';
 
 export default function App() {
-  const [token, setToken] = useState(localStorage.getItem('token'));
-  const [role, setRole] = useState(localStorage.getItem('role'));
+  const [session, setSession] = useState(() => readSession());
 
-  const handleLoginSuccess = (userRole) => {
-    setToken(localStorage.getItem('token'));
-    setRole(userRole);
-  };
+  const logout = useCallback(() => {
+    clearSession();
+    setSession(null);
+  }, []);
 
-  const handleLogout = () => {
-    localStorage.clear();
-    setToken(null);
-    setRole(null);
-  };
+  // The API client fires this when a stored token is rejected.
+  useEffect(() => {
+    window.addEventListener('itsm:session-expired', logout);
+    return () => window.removeEventListener('itsm:session-expired', logout);
+  }, [logout]);
 
-  if (!token) {
-    return <Login onLoginSuccess={handleLoginSuccess} />;
-  }
+  if (!session) return <Login onLoginSuccess={() => setSession(readSession())} />;
 
-  return <Dashboard role={role} onLogout={handleLogout} />;
+  return <Dashboard user={session.user} token={session.token} onLogout={logout} />;
 }
