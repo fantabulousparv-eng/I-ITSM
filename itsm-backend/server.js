@@ -11,6 +11,7 @@ const slaMonitor = require('./jobs/slaMonitor');
 const { notFound, errorHandler } = require('./middleware/errorHandler');
 
 const authRoutes = require('./routes/authRoutes');
+const chatRoutes = require('./routes/chatRoutes');
 const incidentRoutes = require('./routes/incidentRoutes');
 const serviceRoutes = require('./routes/serviceRoutes');
 const userRoutes = require('./routes/userRoutes');
@@ -78,6 +79,7 @@ function createApp() {
   });
 
   app.use('/api/auth', authRoutes);
+  app.use('/api/chat', chatRoutes);
   app.use('/api/incidents', incidentRoutes);
   app.use('/api/services', serviceRoutes);
   app.use('/api/users', userRoutes);

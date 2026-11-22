@@ -485,3 +485,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--teal); box-shado
 }
 .candidate > div { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
 .candidate small { color: var(--muted); font-size: 12px; }
+.support-chat { max-width: 760px; }
+.chat-log { max-height: 45vh; overflow-y: auto; margin: 1rem 0; }
+.chat-log p { padding: .75rem 1rem; margin-bottom: .5rem; background: var(--teal-soft); border-radius: .75rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+.chat-log strong { display: block; }
+.support-chat textarea { display: block; width: 100%; }

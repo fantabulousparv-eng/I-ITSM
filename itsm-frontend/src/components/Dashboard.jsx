@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import API, { errorMessage, eventsUrl } from '../services/api';
+import SupportChat from './SupportChat';
 import {
   CATEGORIES,
   CLOSED_STATUSES,
@@ -285,6 +286,7 @@ export default function Dashboard({ user, token, onLogout }) {
 
   const nav = [
     { id: 'queue', label: 'Queue' },
+    { id: 'chat', label: 'Support chat' },
     ...(role === 'employee' || role === 'admin' ? [{ id: 'report', label: 'Report' }] : []),
     { id: 'insights', label: 'Insights' },
     ...(role === 'admin' ? [{ id: 'services', label: 'Services' }] : []),
@@ -360,6 +362,7 @@ export default function Dashboard({ user, token, onLogout }) {
 
         {error && <p className="banner" role="alert">{error}</p>}
 
+        {view === 'chat' && <SupportChat />}
         {view === 'queue' && (
           <>
             <div className="kpis">
